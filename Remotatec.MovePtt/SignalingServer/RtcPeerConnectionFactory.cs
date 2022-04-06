@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using SIPSorcery.Media;
+﻿using SIPSorcery.Media;
 using SIPSorcery.Net;
 using SIPSorceryMedia.Abstractions;
 
@@ -7,16 +6,16 @@ namespace SignalingServer
 {
     public static class RtcPeerConnectionFactory
     {
-        private static ConcurrentDictionary<string, RTCPeerConnection> _peers = new();
-
-        public static Task<RTCPeerConnection> CreatePeerConnectionAsync()
+        public static Task<RTCPeerConnection> CreatePeerConnectionAsync(Group group, User user)
         {
             var peerConnection = CreateRtcPeerConnection();
-            _peers.TryAdd(peerConnection.SessionID, peerConnection);
+
+            user.AddGroupConnection(group.Id, peerConnection);
+            group.AddUserConnection(user.Id, peerConnection);
 
             AddMediaToPeerConnection(peerConnection);
 
-            ConfigurePeerConnectionEventHandlers(peerConnection);
+            ConfigurePeerConnectionEventHandlers(group, user, peerConnection);
 
             return Task.FromResult(peerConnection);
         }
@@ -61,9 +60,9 @@ namespace SignalingServer
             peerConnection.addTrack(audioTrack);
         }
 
-        private static void ConfigurePeerConnectionEventHandlers(RTCPeerConnection peerConnection)
+        private static void ConfigurePeerConnectionEventHandlers(Group group, User user, RTCPeerConnection peerConnection)
         {
-            peerConnection.onconnectionstatechange += async state => await OnConnectionStateChanged(state, peerConnection);
+            peerConnection.onconnectionstatechange += async state => await OnConnectionStateChanged(state, group, user);
 
             // Diagnostics.
             peerConnection.OnReceiveReport += (re, media, rr) => Console.WriteLine($"RTCP Receive for {media} from {re}\n{rr.GetDebugSummary()}");
@@ -71,30 +70,25 @@ namespace SignalingServer
             peerConnection.GetRtpChannel().OnStunMessageReceived += (msg, ep, isRelay) => Console.WriteLine($"STUN {msg.Header.MessageType} received from {ep}.");
             peerConnection.oniceconnectionstatechange += (state) => Console.WriteLine($"ICE connection state change to {state}.");
 
-            peerConnection.OnRtpPacketReceived += (rep, media, rtpPkt) => PeerConnection_OnRtpPacketReceived(rep, media, rtpPkt, peerConnection);
+            peerConnection.OnRtpPacketReceived += (rep, media, rtpPkt) => PeerConnection_OnRtpPacketReceived(rep, media, rtpPkt, group, user);
         }
 
-        private static void PeerConnection_OnRtpPacketReceived(System.Net.IPEndPoint rep, SDPMediaTypesEnum mediaType, RTPPacket rtpPkt, RTCPeerConnection peerConnection)
+        private static void PeerConnection_OnRtpPacketReceived(System.Net.IPEndPoint rep, SDPMediaTypesEnum mediaType, RTPPacket rtpPkt, Group grupo, User user)
         {
             Console.WriteLine("RtpPackatReceived...");
-            Console.WriteLine($"Peers.Count: {_peers.Count}");
+            Console.WriteLine($"Peers.Count: {grupo.ConnectionsCount}");
 
-            foreach (var peer in _peers)
-            {
-                if (peer.Key != peerConnection.SessionID)
-                {
-                    peer.Value.SendRtpRaw(mediaType, rtpPkt.Payload, rtpPkt.Header.Timestamp, rtpPkt.Header.MarkerBit, rtpPkt.Header.PayloadType);
-                }
-            }
+            grupo.SendAudioRtpRaw(user.Id, rtpPkt);
         }
 
-        private static async Task OnConnectionStateChanged(RTCPeerConnectionState state, RTCPeerConnection peerConnection)
+        private static async Task OnConnectionStateChanged(RTCPeerConnectionState state, Group group, User user)
         {
             Console.WriteLine($"Peer connection state change to {state}.");
 
             if (state == RTCPeerConnectionState.closed || state == RTCPeerConnectionState.failed || state == RTCPeerConnectionState.disconnected)
             {
-                _peers.TryRemove(peerConnection.SessionID, out _);
+                group.RemoveUserConnection(user.Id);
+                user.RemoveGroupConnection(group.Id);
                 return;
             }
         }

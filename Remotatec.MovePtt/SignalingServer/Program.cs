@@ -1,8 +1,8 @@
 ﻿using System.Net;
 using System.Text.Json;
 using SignalingServer;
+using SignalingServer.Dtos;
 using SIPSorcery.Net;
-using WebSocketSharp.Net.WebSockets;
 using WebSocketSharp.Server;
 
 const int WEBSOCKET_PORT = 8081;
@@ -14,30 +14,40 @@ var webSocketServer = new WebSocketServer(IPAddress.Any, WEBSOCKET_PORT);
 
 webSocketServer.AddWebSocketService<SdpExchangeWebSocketPeer>("/", (sdpExchanger) =>
 {
-    sdpExchanger.WebSocketOpened += SendSdpOffer;
     sdpExchanger.OnMessageReceived += WebSocketMessageReceived;
 });
 
-void WebSocketMessageReceived(RTCPeerConnection peerConnection, string message)
+void WebSocketMessageReceived(SdpExchangeWebSocketPeer socket, WebSocketMessage message)
 {
     try
     {
-        if (peerConnection.remoteDescription is null)
+        if (message?.Action == "SDP")
         {
-            Console.WriteLine($"Answer SDP: {message}");
+            var payload = JsonUtils.Deserialize<SdpInput>(message.Payload);
 
-            if (RTCSessionDescriptionInit.TryParse(message, out var remoteDescription))
+            var user = Database.GetUser(payload.UserId);
+
+            if (user.GroupConnections.TryGetValue(payload.GroupId, out var peerConnection))
             {
-                peerConnection.setRemoteDescription(remoteDescription);
+                if (RTCSessionDescriptionInit.TryParse(payload.SdpInfo, out var remoteDescription))
+                {
+                    peerConnection?.setRemoteDescription(remoteDescription);
+                }
             }
         }
-        else
-        {
-            Console.WriteLine($"ICE Candidate: {message}");
 
-            if (RTCIceCandidateInit.TryParse(message, out var iceCandidate))
+        if (message?.Action == "ICE_CANDIDATE")
+        {
+            var payload = JsonUtils.Deserialize<IceCandidateInput>(message.Payload);
+
+            var user = Database.GetUser(payload.UserId);
+
+            if (user.GroupConnections.TryGetValue(payload.GroupId, out var peerConnection))
             {
-                peerConnection.addIceCandidate(new RTCIceCandidateInit { candidate = iceCandidate.candidate});
+                if (RTCIceCandidateInit.TryParse(payload.IceCandidateInfo, out var iceCandidate))
+                {
+                    peerConnection?.addIceCandidate(new RTCIceCandidateInit { candidate = iceCandidate.candidate });
+                }
             }
         }
     }
@@ -45,17 +55,6 @@ void WebSocketMessageReceived(RTCPeerConnection peerConnection, string message)
     {
         Console.WriteLine($"PAUNAKOMBI: {e}");
     }
-}
-
-async Task<RTCPeerConnection> SendSdpOffer(WebSocketContext webSocketContext)
-{
-    var peerConnection = await RtcPeerConnectionFactory.CreatePeerConnectionAsync();
-    var sdpOffer = peerConnection.createOffer(null);
-    await peerConnection.setLocalDescription(sdpOffer);
-
-    webSocketContext.WebSocket.Send(sdpOffer.toJSON());
-
-    return peerConnection;
 }
 
 webSocketServer.Start();
