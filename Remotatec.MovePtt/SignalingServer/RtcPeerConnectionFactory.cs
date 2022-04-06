@@ -77,6 +77,7 @@ namespace SignalingServer
         private static void PeerConnection_OnRtpPacketReceived(System.Net.IPEndPoint rep, SDPMediaTypesEnum mediaType, RTPPacket rtpPkt, RTCPeerConnection peerConnection)
         {
             Console.WriteLine("RtpPackatReceived...");
+            Console.WriteLine($"Peers.Count: {_peers.Count}");
 
             foreach (var peer in _peers)
             {
@@ -91,19 +92,10 @@ namespace SignalingServer
         {
             Console.WriteLine($"Peer connection state change to {state}.");
 
-            if (state == RTCPeerConnectionState.connected)
+            if (state == RTCPeerConnectionState.closed || state == RTCPeerConnectionState.failed || state == RTCPeerConnectionState.disconnected)
             {
+                _peers.TryRemove(peerConnection.SessionID, out _);
                 return;
-            }
-
-            if (state == RTCPeerConnectionState.closed)
-            {
-                return;
-            }
-
-            if (state == RTCPeerConnectionState.failed)
-            {
-                peerConnection.Close("ice disconnection");
             }
         }
     }
