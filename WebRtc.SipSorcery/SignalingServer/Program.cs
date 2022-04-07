@@ -21,6 +21,34 @@ void WebSocketMessageReceived(SdpExchangeWebSocketPeer socket, WebSocketMessage 
 {
     try
     {
+        if (message?.Action == "CONNECT_TO_GROUP")
+        {
+            var payload = JsonUtils.Deserialize<ConnectToGroupInput>(message.Payload);
+
+            var group = Database.GetGroup(payload.GroupId);
+            var user = Database.GetUser(payload.UserId);
+
+            var peerConnectionInGroup = RtcPeerConnectionFactory.CreatePeerConnectionAsync(group, user).GetAwaiter().GetResult();
+            var sdpOffer = peerConnectionInGroup.createOffer(null);
+            peerConnectionInGroup.setLocalDescription(sdpOffer).GetAwaiter().GetResult();
+
+            var offerMessage = JsonUtils.Serialize(
+                new WebSocketMessage
+                {
+                    Action = "SDP",
+                    Payload = JsonUtils.Serialize(new
+                    {
+                        GroupId = message.Payload,
+                        Offer = sdpOffer.toJSON()
+                    })
+                }
+            );
+
+            socket.Context.WebSocket.Send(offerMessage);
+
+            return;
+        }
+
         if (message?.Action == "SDP")
         {
             var payload = JsonUtils.Deserialize<SdpInput>(message.Payload);

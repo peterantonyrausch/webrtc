@@ -1,0 +1,317 @@
+﻿<!DOCTYPE html>
+<head>
+    <style>
+        body {
+            font-family: monospace;
+        }
+
+        table, th, td {
+            border: 1px solid black;
+            text-align: center;
+        }
+    </style>
+    <script type="text/javascript">
+        const WEBSOCKET_URL = "ws://127.0.0.1:8081/"
+
+        var pc, ws;
+        var wsConnected = false;
+        var pc_dic = new Object();
+        var audioControls = new Object();
+
+        function getUserId() {
+            return document.querySelector('#userid').value;
+        }
+
+        function disableUserId() {
+            document.querySelector('#userid').disabled = true;
+            document.querySelector('#useridbutton').disabled = true;
+        }
+
+        function getGroupId() {
+            return document.querySelector('#groupid').value;
+        }
+
+        function sendAudio() {
+            return document.querySelector('#sendaudio').checked;
+        }
+
+        function receiveaudio() {
+            return document.querySelector('#receiveaudio').checked;
+        }
+
+        function audioControl(groupId) {
+            return document.querySelector('#ac_' + groupId);
+        }
+
+        async function start() {
+
+            log("Conectando ao WebSocket...");
+
+            ws = new WebSocket(document.querySelector('#websockurl').value, []);
+
+            ws.onopen = function () {
+                wsConnected = true;
+                log("WebSocket conectado!");
+            }
+
+            ws.onmessage = async function (evt) {
+                log("Mensagem recebida do WebSocket...");
+
+                var obj = JSON.parse(evt.data);
+
+                if (obj.action == "SDP") {
+                    log("Recebendo offer...");
+
+                    pc = new RTCPeerConnection(null);
+
+                    if (sendAudio()) {
+                        let localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+                        localStream.getTracks().forEach(track => {
+                            console.log('add local track ' + track.kind + ' to peer connection.');
+                            console.log(track);
+                            pc.addTrack(track, localStream);
+                        });
+                    }
+
+                    pc.onicegatheringstatechange = function () {
+                        console.log("onicegatheringstatechange: " + pc.iceGatheringState);
+                    }
+
+                    pc.oniceconnectionstatechange = function () {
+                        console.log("oniceconnectionstatechange: " + pc.iceConnectionState);
+                    }
+
+                    pc.onsignalingstatechange = function () {
+                        console.log("onsignalingstatechange: " + pc.signalingState);
+                    }
+
+                    pc.onconnectionstatechange = function (e) {
+                        log("Peer Connection State Changed to: " + pc.connectionState + " no grupo " + getGroupId());
+
+                        if (pc.connectionState == "connected") {
+                            addGroupConnection(pc);
+                        }
+                    }
+
+                    pc.onicecandidate = function (event) {
+                        if (event.candidate) {
+                            log("Enviando informações do ICE Candidate...");
+
+                            ws.send(JSON.stringify({
+                                action: "ICE_CANDIDATE",
+                                payload: JSON.stringify({
+                                    userId: getUserId(),
+                                    groupId: getGroupId(),
+                                    iceCandidateInfo: JSON.stringify(event.candidate)
+                                })
+                            }));
+                        }
+                    };
+
+                    let groupid = getGroupId();
+                    if (receiveaudio()) {
+                        var audioCtl = document.createElement('audio');
+                        audioCtl.id = 'ac_' + groupid;
+                        audioCtl.controls = 'controls';
+                        audioCtl.autoplay = 'autoplay';
+
+                        pc.ontrack = evt => audioCtl.srcObject = evt.streams[0];
+
+                        audioControls[groupid] = audioCtl;
+                    }
+
+                    var payloadObj = JSON.parse(obj.payload);
+                    var offerObj = JSON.parse(payloadObj.offer);
+
+                    await pc.setRemoteDescription(new RTCSessionDescription(offerObj));
+
+                    log("Criando answer...");
+
+                    pc.createAnswer()
+                        .then((answer) => pc.setLocalDescription(answer))
+                        .then(() => {
+                            log("Enviando answer...");
+                            ws.send(JSON.stringify({
+                                action: "SDP",
+                                payload: JSON.stringify({
+                                    userId: getUserId(),
+                                    groupId: getGroupId(),
+                                    sdpInfo: JSON.stringify(pc.localDescription)
+                                })
+                            }))
+                        });
+                }
+            };
+        };
+
+        lineNumber = 1;
+        function log(message) {
+            var html = document.querySelector('#log').innerHTML;
+            document.querySelector('#log').innerHTML = html + "</br>" + lineNumber.toString().padStart(2, "0").padEnd(4, " ") + message;
+            lineNumber++;
+        }
+
+        async function login() {
+            log("Realizando login...");
+
+            if (!getUserId()) {
+                alert("Bota o teu nome xiru!");
+                return;
+            }
+
+            if (!wsConnected) {
+                alert("Espera o WebSocket conectar bixo!");
+                return;
+            }
+
+            ws.send(JSON.stringify({
+                action: "LOGIN",
+                payload: JSON.stringify({ userId: getUserId() })
+            }));
+
+            log("Mensagem de login enviada...");
+
+            disableUserId();
+        }
+
+        async function connect() {
+            log("Conectando no grupo " + getGroupId() + "...");
+
+            if (!getUserId()) {
+                alert("Bota o teu nome xiru!");
+                return;
+            }
+
+            if (!getGroupId()) {
+                alert("Bota o nome do grupo seu zé ruela!");
+                return;
+            }
+
+            if (!wsConnected) {
+                alert("Espera o WebSocket conectar bixo!");
+                return;
+            }
+
+            ws.send(JSON.stringify({
+                action: "CONNECT_TO_GROUP",
+                payload: JSON.stringify({ userId: getUserId(), groupId: getGroupId() })
+            }));
+
+            log("Mensagem de conexão enviada...");
+        }
+
+        async function closePeer(groupId) {
+            var peer = pc_dic[groupId];
+            if (peer != null) {
+                peer.close();
+                pc_dic[groupId] = null;
+                audioControls[groupId] = null;
+                log("Desconectado do grupo " + groupId + "...");
+            }
+
+            var tableLines = document
+                .querySelector("#groupsTable")
+                .getElementsByTagName("tbody")[0]
+                .getElementsByTagName("tr");
+
+            console.log(tableLines);
+
+            var lineToRemove = null;
+            for (var i = 0; i < tableLines.length; i++) {
+                var value = tableLines[i];
+                var lineGroupId = value.dataset['groupid'];
+                if (lineGroupId == groupId) {
+                    lineToRemove = value;
+                    break;
+                }
+            }
+
+            lineToRemove.parentNode.removeChild(lineToRemove);
+        };
+
+        function addGroupConnection(pc) {
+            let gr = getGroupId();
+            let sa = sendAudio() ? "YES" : "NO";
+            let ra = receiveaudio() ? "YES" : "NO";
+
+            var tbody = document.getElementById('groupsTable').getElementsByTagName('tbody')[0];
+            var tbodyContent = tbody.innerHTML;
+            tbody.innerHTML = tbodyContent + "<tr data-groupid='" + gr + "'><td>" + gr + "</td><td>" + sa + "</td><td>" + ra + "</td><td data-audio='1'></td><td><button type='button' onclick='closePeer(\"" + gr + "\")'>Disconnect</button></td></tr>";
+
+            pc_dic[gr] = pc;
+
+
+            var tableLines = document
+                .querySelector("#groupsTable")
+                .getElementsByTagName("tbody")[0]
+                .getElementsByTagName("tr");
+
+            var groupId = getGroupId();
+            var groupLine = null;
+            for (var i = 0; i < tableLines.length; i++) {
+                var value = tableLines[i];
+                var lineGroupId = value.dataset['groupid'];
+                if (lineGroupId == groupId) {
+                    groupLine = value;
+                    break;
+                }
+            }
+
+            var cells = groupLine.getElementsByTagName("td");
+
+            for (var i = 0; i < cells.length; i++) {
+                var cell = cells[i];
+                var isAudioCell = cell.dataset['audio'];
+
+                if (isAudioCell == "1") {
+                    cell.appendChild(audioControls[groupId]);
+                    break;
+                }
+            }
+        }
+
+    </script>
+</head>
+<body>
+
+    <div style="margin: 10px;">
+        <input type="text" id="websockurl" size="40" />
+        <button type="button" class="btn btn-success" onclick="start();">Connect WebSocket</button>
+    </div>
+
+    <div style="margin: 10px;">
+        <input type="text" id="userid" size="40" />
+        <button type="button" id="useridbutton" class="btn btn-success" onclick="login();">Login</button>
+    </div>
+
+    <div style="margin: 10px;">
+        <input type="text" id="groupid" size="40" />
+        <button type="button" class="btn btn-success" onclick="connect();">Connect Group</button>
+        <input type="checkbox" id="sendaudio" checked="checked" />
+        <label for="sendaudio">Send audio</label>
+        <input type="checkbox" id="receiveaudio" checked="checked" />
+        <label for="receiveaudio">Receive audio</label>
+    </div>
+
+    <div style="margin: 10px;">
+        <table id="groupsTable">
+            <thead>
+                <tr>
+                    <th>GRUPO</th>
+                    <th>SEND AUDIO</th>
+                    <th>RECEIVE AUDIO</th>
+                    <th>AUDIO CONTROL</th>
+                    <th>COMMANDS</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+
+    <p id="log" style="margin: 10px;font-size:.9em;color:blue;"></p>
+</body>
+
+<script>
+    document.querySelector('#websockurl').value = WEBSOCKET_URL;
+</script>

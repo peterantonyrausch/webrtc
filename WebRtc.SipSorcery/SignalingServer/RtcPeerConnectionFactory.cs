@@ -73,12 +73,11 @@ namespace SignalingServer
             peerConnection.OnRtpPacketReceived += (rep, media, rtpPkt) => PeerConnection_OnRtpPacketReceived(rep, media, rtpPkt, group, user);
         }
 
-        private static void PeerConnection_OnRtpPacketReceived(System.Net.IPEndPoint rep, SDPMediaTypesEnum mediaType, RTPPacket rtpPkt, Group grupo, User user)
+        private static void PeerConnection_OnRtpPacketReceived(System.Net.IPEndPoint rep, SDPMediaTypesEnum mediaType, RTPPacket rtpPkt, Group group, User user)
         {
-            Console.WriteLine("RtpPackatReceived...");
-            Console.WriteLine($"Peers.Count: {grupo.ConnectionsCount}");
+            Console.WriteLine($"User '{user.Id}' send packet to {group.ConnectionsCount} user(s) to group '{group.Id}'");
 
-            grupo.SendAudioRtpRaw(user.Id, rtpPkt);
+            group.SendAudioRtpRaw(user.Id, rtpPkt);
         }
 
         private static async Task OnConnectionStateChanged(RTCPeerConnectionState state, Group group, User user)
