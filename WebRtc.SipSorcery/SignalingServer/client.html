@@ -13,7 +13,7 @@
     <script type="text/javascript">
         const WEBSOCKET_URL = "ws://127.0.0.1:8081/"
 
-        var pc, ws;
+        var ws;
         var wsConnected = false;
         var pc_dic = new Object();
         var audioControls = new Object();
@@ -62,38 +62,40 @@
                 if (obj.action == "SDP") {
                     log("Recebendo offer...");
 
-                    pc = new RTCPeerConnection(null);
+                    let groupid = getGroupId();
+
+                    pc_dic[groupid] = new RTCPeerConnection(null);
 
                     if (sendAudio()) {
                         let localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
                         localStream.getTracks().forEach(track => {
                             console.log('add local track ' + track.kind + ' to peer connection.');
                             console.log(track);
-                            pc.addTrack(track, localStream);
+                            pc_dic[groupid].addTrack(track, localStream);
                         });
                     }
 
-                    pc.onicegatheringstatechange = function () {
-                        console.log("onicegatheringstatechange: " + pc.iceGatheringState);
+                    pc_dic[groupid].onicegatheringstatechange = function () {
+                        console.log("onicegatheringstatechange: " + pc_dic[groupid].iceGatheringState);
                     }
 
-                    pc.oniceconnectionstatechange = function () {
-                        console.log("oniceconnectionstatechange: " + pc.iceConnectionState);
+                    pc_dic[groupid].oniceconnectionstatechange = function () {
+                        console.log("oniceconnectionstatechange: " + pc_dic[groupid].iceConnectionState);
                     }
 
-                    pc.onsignalingstatechange = function () {
-                        console.log("onsignalingstatechange: " + pc.signalingState);
+                    pc_dic[groupid].onsignalingstatechange = function () {
+                        console.log("onsignalingstatechange: " + pc_dic[groupid].signalingState);
                     }
 
-                    pc.onconnectionstatechange = function (e) {
-                        log("Peer Connection State Changed to: " + pc.connectionState + " no grupo " + getGroupId());
+                    pc_dic[groupid].onconnectionstatechange = function (e) {
+                        log("Peer Connection State Changed to: " + pc_dic[groupid].connectionState + " no grupo " + getGroupId());
 
-                        if (pc.connectionState == "connected") {
-                            addGroupConnection(pc);
+                        if (pc_dic[groupid].connectionState == "connected") {
+                            addGroupConnection(pc_dic[groupid]);
                         }
                     }
 
-                    pc.onicecandidate = function (event) {
+                    pc_dic[groupid].onicecandidate = function (event) {
                         if (event.candidate) {
                             log("Enviando informações do ICE Candidate...");
 
@@ -108,27 +110,28 @@
                         }
                     };
 
-                    let groupid = getGroupId();
                     if (receiveaudio()) {
                         var audioCtl = document.createElement('audio');
                         audioCtl.id = 'ac_' + groupid;
                         audioCtl.controls = 'controls';
                         audioCtl.autoplay = 'autoplay';
 
-                        pc.ontrack = evt => audioCtl.srcObject = evt.streams[0];
-
                         audioControls[groupid] = audioCtl;
+
+                        pc_dic[groupid].ontrack = evt => audioControls[groupid].srcObject = evt.streams[0];
+
+                        
                     }
 
                     var payloadObj = JSON.parse(obj.payload);
                     var offerObj = JSON.parse(payloadObj.offer);
 
-                    await pc.setRemoteDescription(new RTCSessionDescription(offerObj));
+                    await pc_dic[groupid].setRemoteDescription(new RTCSessionDescription(offerObj));
 
                     log("Criando answer...");
 
-                    pc.createAnswer()
-                        .then((answer) => pc.setLocalDescription(answer))
+                    pc_dic[groupid].createAnswer()
+                        .then((answer) => pc_dic[groupid].setLocalDescription(answer))
                         .then(() => {
                             log("Enviando answer...");
                             ws.send(JSON.stringify({
@@ -136,7 +139,7 @@
                                 payload: JSON.stringify({
                                     userId: getUserId(),
                                     groupId: getGroupId(),
-                                    sdpInfo: JSON.stringify(pc.localDescription)
+                                    sdpInfo: JSON.stringify(pc_dic[groupid].localDescription)
                                 })
                             }))
                         });
@@ -229,7 +232,7 @@
             lineToRemove.parentNode.removeChild(lineToRemove);
         };
 
-        function addGroupConnection(pc) {
+        function addGroupConnection() {
             let gr = getGroupId();
             let sa = sendAudio() ? "YES" : "NO";
             let ra = receiveaudio() ? "YES" : "NO";
@@ -237,9 +240,6 @@
             var tbody = document.getElementById('groupsTable').getElementsByTagName('tbody')[0];
             var tbodyContent = tbody.innerHTML;
             tbody.innerHTML = tbodyContent + "<tr data-groupid='" + gr + "'><td>" + gr + "</td><td>" + sa + "</td><td>" + ra + "</td><td data-audio='1'></td><td><button type='button' onclick='closePeer(\"" + gr + "\")'>Disconnect</button></td></tr>";
-
-            pc_dic[gr] = pc;
-
 
             var tableLines = document
                 .querySelector("#groupsTable")
