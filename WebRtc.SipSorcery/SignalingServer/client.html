@@ -11,12 +11,11 @@
         }
     </style>
     <script type="text/javascript">
-        const WEBSOCKET_URL = "ws://127.0.0.1:8081/"
-
-        var ws;
+        
+        var pc_a, pc_b, pc_c, ws;
         var wsConnected = false;
-        var pc_dic = new Object();
-        var audioControls = new Object();
+        var groupIdSelected;
+        var localStream;
 
         function getUserId() {
             return document.querySelector('#userid').value;
@@ -27,23 +26,30 @@
             document.querySelector('#useridbutton').disabled = true;
         }
 
-        function getGroupId() {
-            return document.querySelector('#groupid').value;
+        function sendAudio(groupId) {
+            return document.querySelector('#sendaudio_' + groupId).checked;
         }
 
-        function sendAudio() {
-            return document.querySelector('#sendaudio').checked;
-        }
-
-        function receiveaudio() {
-            return document.querySelector('#receiveaudio').checked;
+        function receiveaudio(groupId) {
+            return document.querySelector('#receiveaudio_' + groupId).checked;
         }
 
         function audioControl(groupId) {
             return document.querySelector('#ac_' + groupId);
         }
 
+        async function finish() {
+            disconnectA();
+            disconnectB();
+            disconnectC();
+            ws.close();
+
+            log("Desconectado do websocket!");
+        }
+
         async function start() {
+
+            localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
 
             log("Conectando ao WebSocket...");
 
@@ -56,96 +62,227 @@
 
             ws.onmessage = async function (evt) {
                 log("Mensagem recebida do WebSocket...");
+                log("Mensagem recebida: " + evt.data);
 
                 var obj = JSON.parse(evt.data);
 
                 if (obj.action == "SDP") {
                     log("Recebendo offer...");
 
-                    let groupid = getGroupId();
-
-                    pc_dic[groupid] = new RTCPeerConnection(null);
-
-                    if (sendAudio()) {
-                        let localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-                        localStream.getTracks().forEach(track => {
-                            console.log('add local track ' + track.kind + ' to peer connection.');
-                            console.log(track);
-                            pc_dic[groupid].addTrack(track, localStream);
-                        });
+                    if (groupIdSelected == "A") {
+                        await configureGroupConnectionA(obj);
+                    } else if (groupIdSelected == "B") {
+                        await configureGroupConnectionB(obj);
+                    } else if (groupIdSelected == "C") {
+                        await configureGroupConnectionC(obj);
                     }
-
-                    pc_dic[groupid].onicegatheringstatechange = function () {
-                        console.log("onicegatheringstatechange: " + pc_dic[groupid].iceGatheringState);
-                    }
-
-                    pc_dic[groupid].oniceconnectionstatechange = function () {
-                        console.log("oniceconnectionstatechange: " + pc_dic[groupid].iceConnectionState);
-                    }
-
-                    pc_dic[groupid].onsignalingstatechange = function () {
-                        console.log("onsignalingstatechange: " + pc_dic[groupid].signalingState);
-                    }
-
-                    pc_dic[groupid].onconnectionstatechange = function (e) {
-                        log("Peer Connection State Changed to: " + pc_dic[groupid].connectionState + " no grupo " + getGroupId());
-
-                        if (pc_dic[groupid].connectionState == "connected") {
-                            addGroupConnection(pc_dic[groupid]);
-                        }
-                    }
-
-                    pc_dic[groupid].onicecandidate = function (event) {
-                        if (event.candidate) {
-                            log("Enviando informações do ICE Candidate...");
-
-                            ws.send(JSON.stringify({
-                                action: "ICE_CANDIDATE",
-                                payload: JSON.stringify({
-                                    userId: getUserId(),
-                                    groupId: getGroupId(),
-                                    iceCandidateInfo: JSON.stringify(event.candidate)
-                                })
-                            }));
-                        }
-                    };
-
-                    if (receiveaudio()) {
-                        var audioCtl = document.createElement('audio');
-                        audioCtl.id = 'ac_' + groupid;
-                        audioCtl.controls = 'controls';
-                        audioCtl.autoplay = 'autoplay';
-
-                        audioControls[groupid] = audioCtl;
-
-                        pc_dic[groupid].ontrack = evt => audioControls[groupid].srcObject = evt.streams[0];
-
-                        
-                    }
-
-                    var payloadObj = JSON.parse(obj.payload);
-                    var offerObj = JSON.parse(payloadObj.offer);
-
-                    await pc_dic[groupid].setRemoteDescription(new RTCSessionDescription(offerObj));
-
-                    log("Criando answer...");
-
-                    pc_dic[groupid].createAnswer()
-                        .then((answer) => pc_dic[groupid].setLocalDescription(answer))
-                        .then(() => {
-                            log("Enviando answer...");
-                            ws.send(JSON.stringify({
-                                action: "SDP",
-                                payload: JSON.stringify({
-                                    userId: getUserId(),
-                                    groupId: getGroupId(),
-                                    sdpInfo: JSON.stringify(pc_dic[groupid].localDescription)
-                                })
-                            }))
-                        });
                 }
             };
         };
+
+        async function configureGroupConnectionA(obj) {
+            pc_a = new RTCPeerConnection(null);
+
+            if (sendAudio("A")) {
+                localStream.getTracks().forEach(track => {
+                    console.log('add local track ' + track.kind + ' to peer connection.');
+                    console.log(track);
+                    pc_a.addTrack(track, localStream);
+                });
+            }
+
+            pc_a.onicegatheringstatechange = function () {
+                console.log("onicegatheringstatechange: " + pc_a.iceGatheringState);
+            }
+
+            pc_a.oniceconnectionstatechange = function () {
+                console.log("oniceconnectionstatechange: " + pc_a.iceConnectionState);
+            }
+
+            pc_a.onsignalingstatechange = function () {
+                console.log("onsignalingstatechange: " + pc_a.signalingState);
+            }
+
+            pc_a.onconnectionstatechange = function (e) {
+                log("Peer Connection State Changed to: " + pc_a.connectionState + " no grupo A");
+            }
+
+            pc_a.onicecandidate = function (event) {
+                if (event.candidate) {
+                    log("Enviando informações do ICE Candidate...");
+
+                    ws.send(JSON.stringify({
+                        action: "ICE_CANDIDATE",
+                        payload: JSON.stringify({
+                            userId: getUserId(),
+                            groupId: "A",
+                            iceCandidateInfo: JSON.stringify(event.candidate)
+                        })
+                    }));
+                }
+            };
+
+            if (receiveaudio("A")) {
+                pc_a.ontrack = evt => audioControl("A").srcObject = evt.streams[0];
+            }
+
+            var payloadObj = JSON.parse(obj.payload);
+            var offerObj = JSON.parse(payloadObj.offer);
+
+            await pc_a.setRemoteDescription(new RTCSessionDescription(offerObj));
+
+            log("Criando answer...");
+
+            pc_a.createAnswer()
+                .then((answer) => pc_a.setLocalDescription(answer))
+                .then(() => {
+                    log("Enviando answer...");
+                    ws.send(JSON.stringify({
+                        action: "SDP",
+                        payload: JSON.stringify({
+                            userId: getUserId(),
+                            groupId: "A",
+                            sdpInfo: JSON.stringify(pc_a.localDescription)
+                        })
+                    }))
+                });
+        }
+
+        async function configureGroupConnectionB(obj) {
+            pc_b = new RTCPeerConnection(null);
+
+            if (sendAudio("B")) {
+                localStream.getTracks().forEach(track => {
+                    console.log('add local track ' + track.kind + ' to peer connection.');
+                    console.log(track);
+                    pc_b.addTrack(track, localStream);
+                });
+            }
+
+            pc_b.onicegatheringstatechange = function () {
+                console.log("onicegatheringstatechange: " + pc_b.iceGatheringState);
+            }
+
+            pc_b.oniceconnectionstatechange = function () {
+                console.log("oniceconnectionstatechange: " + pc_b.iceConnectionState);
+            }
+
+            pc_b.onsignalingstatechange = function () {
+                console.log("onsignalingstatechange: " + pc_b.signalingState);
+            }
+
+            pc_b.onconnectionstatechange = function (e) {
+                log("Peer Connection State Changed to: " + pc_b.connectionState + " no grupo B");
+            }
+
+            pc_b.onicecandidate = function (event) {
+                if (event.candidate) {
+                    log("Enviando informações do ICE Candidate...");
+
+                    ws.send(JSON.stringify({
+                        action: "ICE_CANDIDATE",
+                        payload: JSON.stringify({
+                            userId: getUserId(),
+                            groupId: "B",
+                            iceCandidateInfo: JSON.stringify(event.candidate)
+                        })
+                    }));
+                }
+            };
+
+            if (receiveaudio("B")) {
+                pc_b.ontrack = evt => audioControl("B").srcObject = evt.streams[0];
+            }
+
+            var payloadObj = JSON.parse(obj.payload);
+            var offerObj = JSON.parse(payloadObj.offer);
+
+            await pc_b.setRemoteDescription(new RTCSessionDescription(offerObj));
+
+            log("Criando answer...");
+
+            pc_b.createAnswer()
+                .then((answer) => pc_b.setLocalDescription(answer))
+                .then(() => {
+                    log("Enviando answer...");
+                    ws.send(JSON.stringify({
+                        action: "SDP",
+                        payload: JSON.stringify({
+                            userId: getUserId(),
+                            groupId: "B",
+                            sdpInfo: JSON.stringify(pc_b.localDescription)
+                        })
+                    }))
+                });
+        }
+
+        async function configureGroupConnectionC(obj) {
+            pc_c = new RTCPeerConnection(null);
+
+            if (sendAudio("C")) {
+                localStream.getTracks().forEach(track => {
+                    console.log('add local track ' + track.kind + ' to peer connection.');
+                    console.log(track);
+                    pc_c.addTrack(track, localStream);
+                });
+            }
+
+            pc_c.onicegatheringstatechange = function () {
+                console.log("onicegatheringstatechange: " + pc_c.iceGatheringState);
+            }
+
+            pc_c.oniceconnectionstatechange = function () {
+                console.log("oniceconnectionstatechange: " + pc_c.iceConnectionState);
+            }
+
+            pc_c.onsignalingstatechange = function () {
+                console.log("onsignalingstatechange: " + pc_c.signalingState);
+            }
+
+            pc_c.onconnectionstatechange = function (e) {
+                log("Peer Connection State Changed to: " + pc_c.connectionState + " no grupo C");
+            }
+
+            pc_c.onicecandidate = function (event) {
+                if (event.candidate) {
+                    log("Enviando informações do ICE Candidate...");
+
+                    ws.send(JSON.stringify({
+                        action: "ICE_CANDIDATE",
+                        payload: JSON.stringify({
+                            userId: getUserId(),
+                            groupId: "C",
+                            iceCandidateInfo: JSON.stringify(event.candidate)
+                        })
+                    }));
+                }
+            };
+
+            if (receiveaudio("C")) {
+                pc_c.ontrack = evt => audioControl("C").srcObject = evt.streams[0];
+            }
+
+            var payloadObj = JSON.parse(obj.payload);
+            var offerObj = JSON.parse(payloadObj.offer);
+
+            await pc_c.setRemoteDescription(new RTCSessionDescription(offerObj));
+
+            log("Criando answer...");
+
+            pc_c.createAnswer()
+                .then((answer) => pc_c.setLocalDescription(answer))
+                .then(() => {
+                    log("Enviando answer...");
+                    ws.send(JSON.stringify({
+                        action: "SDP",
+                        payload: JSON.stringify({
+                            userId: getUserId(),
+                            groupId: "C",
+                            sdpInfo: JSON.stringify(pc_c.localDescription)
+                        })
+                    }))
+                });
+        }
 
         lineNumber = 1;
         function log(message) {
@@ -177,15 +314,29 @@
             disableUserId();
         }
 
-        async function connect() {
-            log("Conectando no grupo " + getGroupId() + "...");
+        async function connectA() {
+            connect("A");
+        }
+
+        async function connectB() {
+            connect("B");
+        }
+
+        async function connectC() {
+            connect("C");
+        }
+
+        async function connect(groupId) {
+            groupIdSelected = groupId;
+
+            log("Conectando no grupo " + groupId + "...");
 
             if (!getUserId()) {
                 alert("Bota o teu nome xiru!");
                 return;
             }
 
-            if (!getGroupId()) {
+            if (!groupId) {
                 alert("Bota o nome do grupo seu zé ruela!");
                 return;
             }
@@ -197,79 +348,47 @@
 
             ws.send(JSON.stringify({
                 action: "CONNECT_TO_GROUP",
-                payload: JSON.stringify({ userId: getUserId(), groupId: getGroupId() })
+                payload: JSON.stringify({ userId: getUserId(), groupId: groupId })
             }));
 
             log("Mensagem de conexão enviada...");
         }
 
-        async function closePeer(groupId) {
-            var peer = pc_dic[groupId];
-            if (peer != null) {
-                peer.close();
-                pc_dic[groupId] = null;
-                audioControls[groupId] = null;
-                log("Desconectado do grupo " + groupId + "...");
-            }
-
-            var tableLines = document
-                .querySelector("#groupsTable")
-                .getElementsByTagName("tbody")[0]
-                .getElementsByTagName("tr");
-
-            console.log(tableLines);
-
-            var lineToRemove = null;
-            for (var i = 0; i < tableLines.length; i++) {
-                var value = tableLines[i];
-                var lineGroupId = value.dataset['groupid'];
-                if (lineGroupId == groupId) {
-                    lineToRemove = value;
-                    break;
-                }
-            }
-
-            lineToRemove.parentNode.removeChild(lineToRemove);
-        };
-
-        function addGroupConnection() {
-            let gr = getGroupId();
-            let sa = sendAudio() ? "YES" : "NO";
-            let ra = receiveaudio() ? "YES" : "NO";
-
-            var tbody = document.getElementById('groupsTable').getElementsByTagName('tbody')[0];
-            var tbodyContent = tbody.innerHTML;
-            tbody.innerHTML = tbodyContent + "<tr data-groupid='" + gr + "'><td>" + gr + "</td><td>" + sa + "</td><td>" + ra + "</td><td data-audio='1'></td><td><button type='button' onclick='closePeer(\"" + gr + "\")'>Disconnect</button></td></tr>";
-
-            var tableLines = document
-                .querySelector("#groupsTable")
-                .getElementsByTagName("tbody")[0]
-                .getElementsByTagName("tr");
-
-            var groupId = getGroupId();
-            var groupLine = null;
-            for (var i = 0; i < tableLines.length; i++) {
-                var value = tableLines[i];
-                var lineGroupId = value.dataset['groupid'];
-                if (lineGroupId == groupId) {
-                    groupLine = value;
-                    break;
-                }
-            }
-
-            var cells = groupLine.getElementsByTagName("td");
-
-            for (var i = 0; i < cells.length; i++) {
-                var cell = cells[i];
-                var isAudioCell = cell.dataset['audio'];
-
-                if (isAudioCell == "1") {
-                    cell.appendChild(audioControls[groupId]);
-                    break;
-                }
-            }
+        function disconnectA() {
+            disconnect("A");
         }
 
+        function disconnectB() {
+            disconnect("B");
+        }
+
+        function disconnectC() {
+            disconnect("C");
+        }
+
+        function disconnect(groupId) {
+            
+            if (groupId == "A") {
+                if (pc_a != null) {
+                    pc_a.close();
+                    pc_a = null;
+                }
+            } else if (groupId == "B") {
+                if (pc_b != null) {
+                    pc_b.close();
+                    pc_b = null;
+                }
+            } else if (groupId == "C") {
+                if (pc_c != null) {
+                    pc_c.close();
+                    pc_c = null;
+                }
+            }
+
+            audioControl(groupId).srcObject = null;
+
+            log("Desconectado do grupo " + groupId + "...");
+        };
     </script>
 </head>
 <body>
@@ -277,6 +396,7 @@
     <div style="margin: 10px;">
         <input type="text" id="websockurl" size="40" />
         <button type="button" class="btn btn-success" onclick="start();">Connect WebSocket</button>
+        <button type="button" class="btn btn-success" onclick="finish();">Disconnect WebSocket</button>
     </div>
 
     <div style="margin: 10px;">
@@ -284,34 +404,43 @@
         <button type="button" id="useridbutton" class="btn btn-success" onclick="login();">Login</button>
     </div>
 
-    <div style="margin: 10px;">
-        <input type="text" id="groupid" size="40" />
-        <button type="button" class="btn btn-success" onclick="connect();">Connect Group</button>
-        <input type="checkbox" id="sendaudio" checked="checked" />
-        <label for="sendaudio">Send audio</label>
-        <input type="checkbox" id="receiveaudio" checked="checked" />
-        <label for="receiveaudio">Receive audio</label>
+    <div style="margin: 10px;display: flex; justify-content: flex-start; align-items: center;">
+        <input type="text" id="groupid_A" size="40" value="A" disabled="disabled" />
+        <button type="button" onclick="connectA();">Connect Group</button>
+        <button type="button" onclick="disconnectA();">Disconnect Group</button>
+        <input type="checkbox" id="sendaudio_A" checked="checked" />
+        <label for="sendaudio_A">Send audio</label>
+        <input type="checkbox" id="receiveaudio_A" checked="checked" />
+        <label for="receiveaudio_A">Receive audio</label>
+        <audio autoplay controls id="ac_A"></audio>
     </div>
 
-    <div style="margin: 10px;">
-        <table id="groupsTable">
-            <thead>
-                <tr>
-                    <th>GRUPO</th>
-                    <th>SEND AUDIO</th>
-                    <th>RECEIVE AUDIO</th>
-                    <th>AUDIO CONTROL</th>
-                    <th>COMMANDS</th>
-                </tr>
-            </thead>
-            <tbody>
-            </tbody>
-        </table>
+    <div style="margin: 10px;display: flex; justify-content: flex-start; align-items: center;">
+        <input type="text" id="groupid_B" size="40" value="B" disabled="disabled" />
+        <button type="button" onclick="connectB();">Connect Group</button>
+        <button type="button" onclick="disconnectB();">Disconnect Group</button>
+        <input type="checkbox" id="sendaudio_B" checked="checked" />
+        <label for="sendaudio_B">Send audio</label>
+        <input type="checkbox" id="receiveaudio_B" checked="checked" />
+        <label for="receiveaudio_B">Receive audio</label>
+        <audio autoplay controls id="ac_B"></audio>
+    </div>
+
+    <div style="margin: 10px;display: flex; justify-content: flex-start; align-items: center;">
+        <input type="text" id="groupid_C" size="40" value="C" disabled="disabled" />
+        <button type="button" onclick="connectC();">Connect Group</button>
+        <button type="button" onclick="disconnectC();">Disconnect Group</button>
+        <input type="checkbox" id="sendaudio_C" checked="checked" />
+        <label for="sendaudio_C">Send audio</label>
+        <input type="checkbox" id="receiveaudio_C" checked="checked" />
+        <label for="receiveaudio_C">Receive audio</label>
+        <audio autoplay controls id="ac_C"></audio>
     </div>
 
     <p id="log" style="margin: 10px;font-size:.9em;color:blue;"></p>
 </body>
 
 <script>
+    const WEBSOCKET_URL = "ws://127.0.0.1:8081/";
     document.querySelector('#websockurl').value = WEBSOCKET_URL;
 </script>
