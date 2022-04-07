@@ -49,14 +49,9 @@ namespace SignalingServer
 
         private static void AddMediaToPeerConnection(RTCPeerConnection peerConnection)
         {
-            var audioTrack = new MediaStreamTrack(
-                SDPMediaTypesEnum.audio,
-                false,
-                new List<SDPAudioVideoMediaFormat>
-                {
-                    new SDPAudioVideoMediaFormat(SDPWellKnownMediaFormatsEnum.PCMU)
-                }
-            );
+            // https://datatracker.ietf.org/doc/html/rfc7587
+            var audioTrack = new MediaStreamTrack(new AudioFormat(AudioCodecsEnum.OPUS, 101, 48000, 2, "ptime=60;maxptime=120;maxplaybackrate=8000;sprop-maxcapturerate=8000;maxaveragebitrate=8000;cbr=1;useinbandfec=0;"));
+
             peerConnection.addTrack(audioTrack);
         }
 
