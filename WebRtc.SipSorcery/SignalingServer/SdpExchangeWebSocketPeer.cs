@@ -12,7 +12,11 @@ namespace SignalingServer
 
         protected override void OnMessage(MessageEventArgs e)
         {
+            Console.WriteLine($"### MessageEventArgs.Data ###{Environment.NewLine}{e.Data}");
+
             var message = JsonUtils.Deserialize<WebSocketMessage>(e.Data);
+
+            Console.WriteLine($"### WebSocketMessage ###{Environment.NewLine}{message}");
 
             if (message?.Action == "LOGIN")
             {
@@ -30,6 +34,8 @@ namespace SignalingServer
 
         protected override void OnClose(CloseEventArgs e)
         {
+            Console.WriteLine($"OnClose:: Code:{e.Code} | Reason {e.Reason}");
+
             base.OnClose(e);
 
             var user = Database.GetUser(UserId);

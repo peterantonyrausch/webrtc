@@ -29,18 +29,18 @@ namespace SignalingServer
         {
             foreach (var userConnection in UserConnections)
             {
-                if (Id == "B")
-                {
-                    Task.Delay(10).GetAwaiter().GetResult();
-                }
-
-                if (Id == "C")
-                {
-                    Task.Delay(30).GetAwaiter().GetResult();
-                }
-
-                //if (userConnection.Key != userIdSender)
+                //if (Id == "B")
                 //{
+                //    Task.Delay(10).GetAwaiter().GetResult();
+                //}
+
+                //if (Id == "C")
+                //{
+                //    Task.Delay(30).GetAwaiter().GetResult();
+                //}
+
+                if (userConnection.Key != userIdSender)
+                {
                     userConnection.Value.SendRtpRaw(
                         SDPMediaTypesEnum.audio,
                         packet.Payload,
@@ -48,7 +48,7 @@ namespace SignalingServer
                         packet.Header.MarkerBit,
                         packet.Header.PayloadType
                     );
-                //}
+                }
             }
         }
     }

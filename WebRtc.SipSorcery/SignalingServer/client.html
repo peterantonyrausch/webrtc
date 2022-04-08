@@ -55,7 +55,7 @@
 
             ws = new WebSocket(document.querySelector('#websockurl').value, []);
 
-            ws.onopen = function () {
+            ws.onopen = function (evt) {
                 wsConnected = true;
                 log("WebSocket conectado!");
             }
@@ -78,6 +78,19 @@
                     }
                 }
             };
+
+            ws.onclose = function (evt) {
+                log("WebSocket::onclose");
+                console.log("WebSocket::onclose");
+                console.log(evt);
+            }
+
+            ws.onerror = function (evt) {
+                log("WebSocket::onerror");
+                console.log("WebSocket::onerror");
+                console.log(evt);
+            }
+            
         };
 
         async function configureGroupConnectionA(obj) {
