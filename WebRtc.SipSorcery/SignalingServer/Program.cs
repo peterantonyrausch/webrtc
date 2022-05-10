@@ -5,7 +5,7 @@ using SignalingServer.Dtos;
 using SIPSorcery.Net;
 using WebSocketSharp.Server;
 
-const int WEBSOCKET_PORT = 8081;
+const int WEBSOCKET_PORT = 80;
 
 // Start web socket.
 Console.WriteLine("Starting web socket server...");

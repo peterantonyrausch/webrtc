@@ -34,10 +34,16 @@ namespace SignalingServer
             {
                 iceServers = new List<RTCIceServer>
                 {
-                    new RTCIceServer
-                    {
-                        urls = "stun:stun.sipsorcery.com"
-                    }
+                    new RTCIceServer{urls = "stun:openrelay.metered.ca:80"},
+                    new RTCIceServer{urls = "turn:openrelay.metered.ca:80", username="openrelayproject", credential="openrelayproject"},
+                    new RTCIceServer{urls = "turn:openrelay.metered.ca:443", username="openrelayproject", credential="openrelayproject"},
+                    new RTCIceServer{urls = "turn:openrelay.metered.ca:443?transport=tcp", username="openrelayproject", credential="openrelayproject"}
+         
+                    //new RTCIceServer { urls = "stun.l.google.com:19302" },
+                    //new RTCIceServer { urls = "stun1.l.google.com:19302" },
+                    //new RTCIceServer { urls = "stun2.l.google.com:19302" },
+                    //new RTCIceServer { urls = "stun3.l.google.com:19302" },
+                    //new RTCIceServer { urls = "stun4.l.google.com:19302" }
                 }
             };
         }
